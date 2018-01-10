@@ -4,7 +4,7 @@ username=${1:-'username'}
 password=${2:-'password'}
 
 # This file sets up the machine.
-# Prerequisit : Git, Python3 (Anaconda)
+# Prerequisit : Python3 (Anaconda), TensorFlow (with GPU support)
 
 # Clonning the surreal repo
 #git clone https://github.com/gulvarol/surreal
