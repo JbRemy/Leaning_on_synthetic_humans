@@ -9,7 +9,15 @@ import numpy as np
 import os
 
 def Create_data_set(set, run):
-    # set = 'train', 'test' or 'val'
+    '''
+    Create a working data set for the model.
+    Images are saved as .jpg and joints matrix as .npy
+    The data is saved in Data/'set'/...
+
+    :param set: 'train', 'test' or 'val'
+    :param run: 'run0', 'run1' or 'run2'
+    :return: list.txt, a list of all images in the created data set
+    '''
 
     path = 'Data/SURREAL/data/cmu/{0}/{1}'.format(set, run)
     data_list = open('Data/{}/list.txt'.format(set), 'w') # list of names of the data processed into the data set
