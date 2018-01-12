@@ -4,6 +4,5 @@ dependencies:
   - python=3.6
   - scipy
   - numpy
-  - tensorflow-gpu
   - Pillow
   - imageio

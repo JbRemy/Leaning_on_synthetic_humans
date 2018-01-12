@@ -22,7 +22,3 @@ for data_set in 'train' 'test' 'val'; do
         mkdir ./Data/${data_set}/${set}
     done
 done
-
-
-
-
