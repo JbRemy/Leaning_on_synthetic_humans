@@ -6,7 +6,7 @@ import tensorflow as tf
 from time import time, strftime, gmtime
 
 from Model.Modules import hourglass, starting_block, post_hourglass_block, output_block
-
+from Model.Utils import make_batch
 
 class Stacked_Hourglass():
     def __init__(self, n_stacks=8, num_max_pools=3, n_feats=256, name='Stacked_Hourglass'):
@@ -27,8 +27,25 @@ class Stacked_Hourglass():
 
         self.saver = tf.train.Saver()
 
-    def fit(self, n_epochs, X_list, input_H=240, input_W=320, batch_size=16, output_dim=24, learning_rate=10e-4,
+
+    def fit(self, X_list, n_epochs, input_H=240, input_W=320, batch_size=16, output_dim=24, learning_rate=10e-4,
             print_every_epoch=100, save_every_epoch=100, persistent_save=False, save_path=""):
+        '''
+        trains the network
+
+        :param X_list: (.txt file) names of the training images
+        :param n_epochs: (int) number of epochs
+        :param input_H: (int) Height of input images
+        :param input_W: (int) Width of input images
+        :param batch_size: (int) batch size
+        :param output_dim: (int) number of joints to compute
+        :param learning_rate: (float)
+        :param print_every_epoch: (int) when to output results to the oerator
+        :param save_every_epoch: (int) when to save a point in the learning curve
+        :param persistent_save: (Boolean) if True the model is saved to 'save_path'
+        :param save_path: (string) where to save the model
+        :return:
+        '''
 
         start_time = time()
         with tf.device('/gpu:0'):
@@ -80,6 +97,7 @@ class Stacked_Hourglass():
         if persistent_save:
             self.saver.save(sess, save_path)
             print('- Model saved to {}'.format(save_path))
+
 
     def _build_network(self, input, output_dim=24):
         '''
