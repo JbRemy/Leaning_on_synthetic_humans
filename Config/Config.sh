@@ -9,6 +9,8 @@ password=${2:-'password'}
 #creating environement
 conda env create -f environment.yml
 
+apt-get install ffmpeg
+
 # Clonning the surreal repo
 #git clone https://github.com/gulvarol/surreal
 

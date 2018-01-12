@@ -6,7 +6,7 @@ import tensorflow as tf
 from time import time, strftime, gmtime
 
 from Model.Modules import hourglass, starting_block, post_hourglass_block, output_block
-from Model.Utils import make_batch
+from Model.Utils import make_batch, compute_loss
 
 class Stacked_Hourglass():
     def __init__(self, n_stacks=8, num_max_pools=3, n_feats=256, name='Stacked_Hourglass'):
@@ -28,7 +28,7 @@ class Stacked_Hourglass():
         self.saver = tf.train.Saver()
 
 
-    def fit(self, X_list, n_epochs, input_H=240, input_W=320, batch_size=16, output_dim=24, learning_rate=10e-4,
+    def fit(self, X_list, n_epochs, input_H=256, input_W=256, batch_size=16, output_dim=24, learning_rate=10e-4,
             print_every_epoch=100, save_every_epoch=100, persistent_save=False, save_path=""):
         '''
         trains the network
@@ -51,13 +51,14 @@ class Stacked_Hourglass():
         with tf.device('/gpu:0'):
             print('- Initializing network')
             with tf.name_scope('inputs'):
-                X = tf.placeholder(tf.float32, [None, input_H, input_W, 1], name='X_train')
-                y = tf.placeholder(tf.float32, [self.n_stacks, None, int(input_H/4), int(input_W/4), output_dim], name='y_train')
+                X = tf.placeholder(tf.float32, [None, input_H, input_W, 3], name='X_train')
+                y = tf.placeholder(tf.float32, [None, int(input_H/4), int(input_W/4), output_dim], name='y_train')
 
             network = self._build_network(X, output_dim=output_dim)
 
             with tf.name_scope('loss'):
-                loss = tf.reduce_sum(tf.pow(network - y ,2))/(batch_size * self.n_stacks * output_dim)
+
+                loss = compute_loss(network, y)
                 tf.summary.scalar('loss', loss, collections=['train'])
                 merged_summary = tf.summary.merge_all('train')
 

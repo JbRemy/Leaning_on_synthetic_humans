@@ -16,7 +16,7 @@ password=${3:-'password'}
 
 for data_set in 'cmu'; do
     for set_name in 'val'; do #'train' 'test'
-        for modality in '.mp4' '_info.mat' ; do
+        for modality in '.mp4' '_info.mat' 'segm.mat'; do
         	echo 'Downloading '${data_set}' data_set '${set_name}' set, files with '${modality}
 
         	#unncomment to create a small subset

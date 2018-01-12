@@ -32,7 +32,7 @@ def Create_data_set(set, run):
             mat = loadmat('{0}/{1}/{2}'.format(path, file, sub_file))
             joints = mat['joints2D']
             for _ in range(np.shape(joints)[2]):
-                np.save('Data/{0}/matrix/{1}_{2}'.format(set, file, _), joints[:,:,_])
+                np.save('Data/{0}/matrix/{1}_{2}'.format(set, file, _), joints[:,:,_].astype(int))
 
         # Images
         for sub_file in vid_files:
@@ -45,3 +45,6 @@ def Create_data_set(set, run):
             data_list.write('{0}_{1}\n'.format(file, _))
 
     data_list.close()
+
+
+
