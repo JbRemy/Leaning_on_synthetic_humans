@@ -2,11 +2,12 @@
 Class for a Stacked Hourglass Network
 '''
 
+import numpy as np
 import tensorflow as tf
-from time import time, strftime, gmtime
+import time
 
 from Model.Modules import hourglass, starting_block, post_hourglass_block, output_block
-from Model.Utils import make_batch, compute_loss
+from Model.Utils import make_batch, compute_loss, mat_to_joints
 
 class Stacked_Hourglass():
     def __init__(self, n_stacks=8, num_max_pools=3, n_feats=256, name='Stacked_Hourglass'):
@@ -25,8 +26,6 @@ class Stacked_Hourglass():
         self.num_max_pools = num_max_pools
         self.n_feats = n_feats
 
-        self.saver = tf.train.Saver()
-
 
     def fit(self, X_list, n_epochs, input_H=256, input_W=256, batch_size=16, output_dim=24, learning_rate=10e-4,
             print_every_epoch=100, save_every_epoch=100, persistent_save=False, save_path=""):
@@ -44,10 +43,14 @@ class Stacked_Hourglass():
         :param save_every_epoch: (int) when to save a point in the learning curve
         :param persistent_save: (Boolean) if True the model is saved to 'save_path'
         :param save_path: (string) where to save the model
-        :return:
         '''
 
-        start_time = time()
+        self.input_H = input_H
+        self.input_W = input_W
+        self.output_dim = output_dim
+
+        start_time = time.time()
+        tf.reset_default_graph()
         with tf.device('/gpu:0'):
             print('- Initializing network')
             with tf.name_scope('inputs'):
@@ -56,13 +59,14 @@ class Stacked_Hourglass():
 
             network = self._build_network(X, output_dim=output_dim)
 
-            with tf.name_scope('loss'):
+            with tf.name_scope('Loss'):
 
                 loss = compute_loss(network, y)
                 tf.summary.scalar('loss', loss, collections=['train'])
                 merged_summary = tf.summary.merge_all('train')
 
-            summary_train = tf.summary.FileWriter('Data/logs/train/', tf.get_default_graph())
+            if persistent_save:
+                summary_train = tf.summary.FileWriter('{}/logs/train/'.format(save_path), tf.get_default_graph())
 
             with tf.name_scope('Optimizer'):
                 optimizer = tf.train.RMSPropOptimizer(learning_rate)
@@ -70,9 +74,9 @@ class Stacked_Hourglass():
 
             print('|-- done ({})'.format(time.strftime("%H:%M:%S", time.gmtime(time.time()-start_time))))
             print('- Starting training')
+            saver = tf.train.saver()
             init = tf.global_variables_initializer()
-            with tf.name_scope('Session'):
-                sess = tf.Session()
+            with tf.Session() as sess:
                 sess.run(init)
                 for epoch in range(n_epochs):
                     avg_cost = 0
@@ -81,7 +85,7 @@ class Stacked_Hourglass():
                         _, c = sess.run([minimizer, loss], feed_dict={X: X_batch, y: y_batch})
                         avg_cost += c / (int(n_epochs/batch_size) * batch_size)
 
-                    X_batch, y_batch = make_batch(X_list, batch_size)
+                    X_batch, y_batch = make_batch(X_list, batch_size, input_H, input_W, output_dim)
                     _, c, summary = sess.run([minimizer, loss, merged_summary], feed_dict={X: X_batch, y: y_batch})
                     avg_cost += c / (int(n_epochs / batch_size) * batch_size)
                     if epoch % save_every_epoch:
@@ -92,12 +96,46 @@ class Stacked_Hourglass():
                         print('|-- epoch {0} done ({1}) :'.format(epoch, time.strftime("%H:%M:%S", time.gmtime(time.time()-start_time))))
                         print('| |-- avg_cost = {}'.format(avg_cost))
 
-        print('- Training done ({})'.format(time.strftime("%H:%M:%S", time.gmtime(time.time()-start_time))))
-        print('|-- Learning curve saved to Data/logs/train/')
-        self.saver.save(sess, '/tmp/model.ckpt')
-        if persistent_save:
-            self.saver.save(sess, save_path)
-            print('- Model saved to {}'.format(save_path))
+                print('- Training done ({})'.format(time.strftime("%H:%M:%S", time.gmtime(time.time()-start_time))))
+                print('|-- Learning curve saved to Data/logs/train/')
+                saver.save(sess, '/tmp/model.ckpt')
+                if persistent_save:
+                    self.saver.save(sess, save_path)
+                    print('- Model saved to {}'.format(save_path))
+
+            summary_train.close()
+
+
+    def predicit(self, X_list, batch_size, set='test', trainning=False, path= 'tmp/model/ckpt'):
+        '''
+        Computes output of a pre-trained model over a test batch
+
+        :param X_list: (.txt file) names of the test images
+        :param batch_size: (int) batch size
+        :param set: (str) 'train' 'test' 'val'
+        :param trainning: (boolean) False
+        :param path: (str) path to the saved model
+
+        :return: (np array) set of predicted joints for all images in the batch, (np array) true joints, (float) loss over the batch
+        '''
+
+        X_batch, y_batch = make_batch(X_list, batch_size, set=set, trainning=trainning)
+        X = tf.placeholder(tf.float32, [None, self.input_H, self.input_W, 3], name='X_train')
+        y = tf.placeholder(tf.float32, [None, int(self.input_H / 4), int(self.input_W / 4), self.output_dim], name='y_train')
+        network_output = tf.get_variable('Network/Output', [self.n_stacks, None, int(self.input_H/4), int(self.input_W/4),
+                                                            self.output_dim], initializer = tf.zeros_initializer)
+        loss = tf.get_variable('Loss/loss', [1], initializer=tf.zeros_initializer)
+        saver = tf.train.Saver({'Network/Output' : network_output, 'Loss/loss': loss})
+        with tf.Session() as sess:
+            saver.restore(sess, path)
+            heat_maps, loss = sess.run([network_output, loss], feed_dict={X: X_batch, y: y_batch})
+
+        heat_maps = heat_maps.eval()
+        joints = np.zeros([batch_size, 2, self.output_dim])
+        for _ in range(batch_size):
+            joints = mat_to_joints(heat_maps[self.n_stacks, _, :, :, :])
+
+        return joints, y_batch, loss
 
 
     def _build_network(self, input, output_dim=24):
@@ -110,7 +148,7 @@ class Stacked_Hourglass():
         :return: (tensor BNHWC)
         '''
 
-        with tf.name_scope('model'):
+        with tf.name_scope('Network'):
             start = starting_block(input, n_feats=self.n_feats)
             stacks_out = start
             heat_maps = []
@@ -123,7 +161,7 @@ class Stacked_Hourglass():
                 stacks_out = tf.add_n([post_hg, stacks_out])
 
             heat_maps.append(output_block(stacks_out, n_feats=self.n_feats, output_dim=output_dim))
-            out = tf.stack(heat_maps, name='output')
+            out = tf.stack(heat_maps, name='Output')
 
             return out
 

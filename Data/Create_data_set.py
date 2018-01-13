@@ -46,5 +46,18 @@ def Create_data_set(set, run):
 
     data_list.close()
 
+def Create_LSP():
+    '''
+    Builds the LSP data for validation
+    '''
 
+    data_list = open('Data/LSP/list.txt'.format(set), 'w')
 
+    file_list = [_.replace('.jpg','') for _ in os.listdir('Data/LSP/images')]
+
+    mat =  loadmat('Data/LSP/joints')
+    joints = mat['joints']
+    for _ in range(2000):
+        temp_joints = joints[0:2,:,_]
+        np.save('Data/LSP/matrix/{0}'.format(file_list[_]), temp_joints.astype(int))
+        data_list.write('{0}_{1}\n'.format(file_list[_], _))
