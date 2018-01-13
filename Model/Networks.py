@@ -27,7 +27,7 @@ class Stacked_Hourglass():
         self.n_feats = n_feats
 
 
-    def fit(self, X_list, n_epochs, input_H=256, input_W=256, batch_size=16, output_dim=24, learning_rate=10e-4,
+    def fit(self, X_list, n_epochs, input_H=256, input_W=256, batch_size=16, output_dim=13, learning_rate=10e-4,
             print_every_epoch=100, save_every_epoch=100, persistent_save=False, save_path=""):
         '''
         trains the network
@@ -138,7 +138,7 @@ class Stacked_Hourglass():
         return joints, y_batch, loss
 
 
-    def _build_network(self, input, output_dim=24):
+    def _build_network(self, input, output_dim=13):
         '''
         Builds the full network
 

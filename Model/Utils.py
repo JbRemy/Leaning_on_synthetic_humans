@@ -12,7 +12,7 @@ from scipy.misc import imresize
 
 
 
-def make_batch(X_list, batch_size, input_H=256, input_W=256, output_dim=24, set='train', trainning=True):
+def make_batch(X_list, batch_size, input_H=256, input_W=256, output_dim=13, set='train', trainning=True):
     '''
     Creats a batch to be fed to the training algorithm
 

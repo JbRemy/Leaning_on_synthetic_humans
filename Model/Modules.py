@@ -133,7 +133,7 @@ def hourglass(input, num_max_pools=3, n_feats=256, name='Hourglass'):
         return out
 
 
-def post_hourglass_block(input, n_feats=256, output_dim=24, name='Post_Hourglass_Block', training=True):
+def post_hourglass_block(input, n_feats=256, output_dim=13, name='Post_Hourglass_Block', training=True):
     '''
     Builds a post hourglass module with two branches :
         - two consecutive residual nodes
@@ -160,7 +160,7 @@ def post_hourglass_block(input, n_feats=256, output_dim=24, name='Post_Hourglass
         return out, heat_map
 
 
-def output_block(input, n_feats=256, output_dim=24, name='Output_Block'):
+def output_block(input, n_feats=256, output_dim=13, name='Output_Block'):
     '''
     Computes the output of the network
 
