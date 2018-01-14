@@ -45,13 +45,16 @@ class Stacked_Hourglass():
         :param save_path: (string) where to save the model
         '''
 
+        with open(X_list, 'r') as file:
+            lines = file.readlines()
+            length = len(lines)
+
         self.input_H = input_H
         self.input_W = input_W
         self.output_dim = output_dim
 
         start_time = time.time()
-        tf.reset_default_graph()
-        with tf.device('/gpu:0'):
+        with tf.device('/cpu:0'):
             print('- Initializing network')
             with tf.name_scope('inputs'):
                 X = tf.placeholder(tf.float32, [None, input_H, input_W, 3], name='X_train')
@@ -74,16 +77,16 @@ class Stacked_Hourglass():
 
             print('|-- done ({})'.format(time.strftime("%H:%M:%S", time.gmtime(time.time()-start_time))))
             print('- Starting training')
-            saver = tf.train.saver()
+            saver = tf.train.Saver()
             init = tf.global_variables_initializer()
             with tf.Session() as sess:
                 sess.run(init)
                 for epoch in range(n_epochs):
                     avg_cost = 0
-                    for batch_number in range(int(n_epochs/batch_size)-1):
+                    for batch_number in range(int(length/batch_size)-1):
                         X_batch, y_batch = make_batch(X_list, batch_size)
                         _, c = sess.run([minimizer, loss], feed_dict={X: X_batch, y: y_batch})
-                        avg_cost += c / (int(n_epochs/batch_size) * batch_size)
+                        avg_cost += c / (int(length/batch_size) * batch_size)
 
                     X_batch, y_batch = make_batch(X_list, batch_size, input_H, input_W, output_dim)
                     _, c, summary = sess.run([minimizer, loss, merged_summary], feed_dict={X: X_batch, y: y_batch})
@@ -100,10 +103,11 @@ class Stacked_Hourglass():
                 print('|-- Learning curve saved to Data/logs/train/')
                 saver.save(sess, '/tmp/model.ckpt')
                 if persistent_save:
-                    self.saver.save(sess, save_path)
+                    saver.save(sess, save_path)
                     print('- Model saved to {}'.format(save_path))
 
             summary_train.close()
+            sess.close()
 
 
     def predicit(self, X_list, batch_size, set='test', trainning=False, path= 'tmp/model/ckpt'):
@@ -134,6 +138,8 @@ class Stacked_Hourglass():
         joints = np.zeros([batch_size, 2, self.output_dim])
         for _ in range(batch_size):
             joints = mat_to_joints(heat_maps[self.n_stacks, _, :, :, :])
+
+        sess.close()
 
         return joints, y_batch, loss
 

@@ -15,12 +15,12 @@ password=${3:-'password'}
 #modified
 
 for data_set in 'cmu'; do
-    for set_name in 'val'; do #'train' 'test'
-        for modality in '.mp4' '_info.mat' 'segm.mat'; do
+    for set_name in 'train'; do #'train' 'test'
+        for modality in '.mp4' '_info.mat'; do
         	echo 'Downloading '${data_set}' data_set '${set_name}' set, files with '${modality}
 
         	#unncomment to create a small subset
-        	head -10 ./surreal/download/files/files_${data_set}_${set_name}${modality}.txt > ./surreal/download/files/test_files_${data_set}_${set_name}${modality}.txt
+        	head -100 ./surreal/download/files/files_${data_set}_${set_name}${modality}.txt > ./surreal/download/files/test_files_${data_set}_${set_name}${modality}.txt
             wget --user=${username} --password=${password} -m -q -i ./surreal/download/files/test_files_${data_set}_${set_name}${modality}.txt --no-host-directories -P ${outdir}
 
             #wget --user=${username} --password=${password} -m -q -i /surreal/download/files/files_${data_set}_${set_name}${modality}.txt --no-host-directories -P ${outdir}

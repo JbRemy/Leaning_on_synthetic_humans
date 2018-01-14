@@ -29,7 +29,7 @@ def make_batch(X_list, batch_size, input_H=256, input_W=256, output_dim=13, set=
     img_path = 'Data/{}/images'.format(set)
     mat_path = 'Data/{}/matrix'.format(set)
     X = np.zeros([batch_size, input_H, input_W, 3])
-    y = np.zeros([batch_size, input_H, input_W, output_dim])
+    y = np.zeros([batch_size, int(input_H/4), int(input_W/4), output_dim])
 
     if trainning:
         with open(X_list, 'r') as file:
@@ -39,9 +39,9 @@ def make_batch(X_list, batch_size, input_H=256, input_W=256, output_dim=13, set=
         with open(X_list, 'r') as file:
             lines = file.readlines()
 
-    for _ in lines:
-        X[_, :, :, :], y[_, :, :, :] = preprocessing('{0}/{1}.mp4'.format(img_path, _),
-                                                     '{0}/{1}.npy'.format(mat_path, _))
+    for _ in range(len(lines)):
+        X[_, :, :, :], y[_, :, :, :] = preprocessing('{0}/{1}.jpg'.format(img_path, lines[_].strip()),
+                                                     '{0}/{1}.npy'.format(mat_path, lines[_].strip()))
 
     return X, y
 
@@ -179,7 +179,7 @@ def make_heat_maps(joints, size=64):
     '''
 
     joints_mats = np.zeros([size, size, joints.shape[1]])
-    for _ in joints.shape[1]:
+    for _ in range(joints.shape[1]):
         joints_mats[joints[0,_], joints[1, _], _] = 1
 
     return joints_mats
@@ -195,16 +195,16 @@ def compute_loss(input, y):
     :return: (float)
     '''
 
-    loss = 0
-    for stack in range(tf.shape(y)[0]):
-        for n_heat_map in range(tf.shape(4)):
+    loss_list = []
+    for stack in range(input.get_shape().as_list()[0]):
+        for n_heat_map in range(input.get_shape().as_list()[4]):
             input_heat_map = input[stack, :, :, :, n_heat_map]
             y_heat_map = y[:, :, :, n_heat_map]
             flat_input = flatten(input_heat_map)
             flat_y = flatten(y_heat_map)
-            loss += tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=flat_input, labels=flat_y), name='loss')
+            loss_list.append(tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=flat_input, labels=flat_y), name='loss'))
 
-    loss = loss / (tf.shape(input)[0] + tf.shape(input)[1])
+    loss = tf.add_n(loss_list) / input.get_shape().as_list()[0]
 
     return loss
 
