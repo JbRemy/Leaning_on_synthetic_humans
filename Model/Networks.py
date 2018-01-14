@@ -54,7 +54,7 @@ class Stacked_Hourglass():
         self.output_dim = output_dim
 
         start_time = time.time()
-        with tf.device('/cpu:0'):
+        with tf.device('/gpu:0'):
             print('- Initializing network')
             with tf.name_scope('inputs'):
                 X = tf.placeholder(tf.float32, [None, input_H, input_W, 3], name='X_train')

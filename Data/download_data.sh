@@ -20,10 +20,10 @@ for data_set in 'cmu'; do
         	echo 'Downloading '${data_set}' data_set '${set_name}' set, files with '${modality}
 
         	#unncomment to create a small subset
-        	head -100 ./surreal/download/files/files_${data_set}_${set_name}${modality}.txt > ./surreal/download/files/test_files_${data_set}_${set_name}${modality}.txt
-            wget --user=${username} --password=${password} -m -q -i ./surreal/download/files/test_files_${data_set}_${set_name}${modality}.txt --no-host-directories -P ${outdir}
+        	#head -100 ./surreal/download/files/files_${data_set}_${set_name}${modality}.txt > ./surreal/download/files/test_files_${data_set}_${set_name}${modality}.txt
+            #wget --user=${username} --password=${password} -m -q -i ./surreal/download/files/test_files_${data_set}_${set_name}${modality}.txt --no-host-directories -P ${outdir}
 
-            #wget --user=${username} --password=${password} -m -q -i /surreal/download/files/files_${data_set}_${set_name}${modality}.txt --no-host-directories -P ${outdir}
+            wget --user=${username} --password=${password} -m -q -i /surreal/download/files/files_${data_set}_${set_name}${modality}.txt --no-host-directories -P ${outdir}
         done
     done
 done
