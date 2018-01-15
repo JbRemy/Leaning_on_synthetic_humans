@@ -4,7 +4,7 @@ Modules to implement an domain adversarial version of the stacked hourglass netw
 '''
 
 import tensorflow as tf
-from tensorflow.contrib.layers import batch_norm, conv2d, max_pool2d
+from tensorflow.contrib.layers import batch_norm, conv2d, max_pool2d, flatten
 from tensorflow.python.ops.image_ops_impl import resize_images
 
 
@@ -96,7 +96,7 @@ def starting_block(input, n_feats=256, name='Starting_Block'):
         norm_1 = batch_norm(input)
         conv = conv2d(norm_1, n_feats, kernel_size=7, stride=2)
         res_down = residual_block(conv, n_feats_1=int(n_feats / 2), n_output_feats=n_feats, name='Down_Residual_Block')
-        pooled = max_pool2d(res_down, kernel_size=4, stride=4)
+        pooled = max_pool2d(res_down, kernel_size=2, stride=2)
         res = residual_block(pooled, n_feats_1=int(n_feats / 2), n_output_feats=n_feats, name='Residual_Block_1')
         out = residual_block(res, n_feats_1=int(n_feats / 2), n_output_feats=n_feats, name='Residual_Block_2')
 
@@ -178,5 +178,62 @@ def output_block(input, n_feats=256, output_dim=13, name='Output_Block'):
 
         return heat_map
 
+
+def domain_classification_output(input, batch_size, n_feats=256, name='Domain_Classification'):
+    '''
+    Domain classification layer for adversarial training
+
+    :param input: (tensor NHWC)
+    :param batch_size:
+    :param n_feats: (int) number of features to output throughout the hourglass
+    :param name:  name to be given to the block for tensor-board
+
+    :return: (tensor) classification log-probs
+    '''
+
+    variables = {
+        'w1' : tf.Variable(tf.truncated_normal([1024, 256], stddev=0.1)),
+        'b1': tf.Variable(tf.zeros([1, 256])),
+
+        'w2': tf.Variable(tf.truncated_normal([256, 64], stddev=0.1)),
+        'b2': tf.Variable(tf.zeros([1, 64])),
+
+        'w3': tf.Variable(tf.truncated_normal([64, 16], stddev=0.1)),
+        'b3': tf.Variable(tf.zeros([1, 16])),
+
+        'w4': tf.Variable(tf.truncated_normal([16, 2], stddev=0.1)),
+        'b4': tf.Variable(tf.zeros([1, 2]))
+    }
+
+    with tf.name_scope(name):
+        with tf.name_scope('Gradient_Reversal'):
+            temp = tf.negative(input, name='Temp')
+            stop = tf.stop_gradient(tf.subtract(input, temp))
+            rev = tf.add_n([temp, stop])
+        norm = batch_norm(rev, activation_fn=tf.nn.relu)
+        conv = conv2d(norm, n_feats, kernel_size=1)
+        pooled = max_pool2d(conv, kernel_size=4, stride=4)
+        norm2 = batch_norm(pooled, activation_fn=tf.nn.relu)
+        conv2 = conv2d(norm2, n_feats, kernel_size=1)
+        pooled2 = max_pool2d(conv2, kernel_size=4, stride=4)
+        norm3 = batch_norm(pooled2, activation_fn=tf.nn.relu)
+        conv3 = conv2d(norm3, n_feats, kernel_size=1)
+        pooled3 = max_pool2d(conv3, kernel_size=2, stride=2)
+        logs = []
+        flat = flatten(pooled3)
+        for _ in range(batch_size):
+            flat_layer = tf.reshape(flat[_, :], [1, 1024])
+            layer_fccd = tf.add_n([tf.matmul(flat_layer, variables['w1']), variables['b1']])
+            layer_actv = tf.nn.sigmoid(layer_fccd)
+            layer1_fccd = tf.add_n([tf.matmul(layer_actv, variables['w2']), variables['b2']])
+            layer1_actv = tf.nn.sigmoid(layer1_fccd)
+            layer2_fccd = tf.add_n([tf.matmul(layer1_actv, variables['w3']), variables['b3']])
+            layer2_actv = tf.nn.sigmoid(layer2_fccd)
+            layer3_fccd = tf.add_n([tf.matmul(layer2_actv, variables['w4']), variables['b4']])
+            logs.append(tf.nn.sigmoid(layer3_fccd))
+
+        logits = tf.stack(logs)
+
+        return logits
 
 

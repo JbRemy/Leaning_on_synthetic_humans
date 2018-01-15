@@ -12,7 +12,8 @@ from scipy.misc import imresize
 
 
 
-def make_batch(X_list, batch_size, input_H=256, input_W=256, output_dim=13, set='train', trainning=True):
+def make_batch(X_list, batch_size, input_H=256, input_W=256, output_dim=13, set='train',
+               adversarial=False, Source=True):
     '''
     Creats a batch to be fed to the training algorithm
 
@@ -22,6 +23,8 @@ def make_batch(X_list, batch_size, input_H=256, input_W=256, output_dim=13, set=
     :param input_W: (int) Width of input images
     :param output_dim: (int) number of joints to compute
     :param set: (str) 'train', 'test' or 'val' 'real'
+    :param adversarial: (Boolean)
+    :param Source: (Boolean)
 
     :return: (tensor) (tensor)
     '''
@@ -31,19 +34,25 @@ def make_batch(X_list, batch_size, input_H=256, input_W=256, output_dim=13, set=
     X = np.zeros([batch_size, input_H, input_W, 3])
     y = np.zeros([batch_size, int(input_H/4), int(input_W/4), output_dim])
 
-    if trainning:
-        with open(X_list, 'r') as file:
-            lines = choice(file.readlines(), size=batch_size)
-
-    else:
-        with open(X_list, 'r') as file:
-            lines = file.readlines()
+    with open(X_list, 'r') as file:
+        lines = choice(file.readlines(), size=batch_size)
 
     for _ in range(len(lines)):
         X[_, :, :, :], y[_, :, :, :] = preprocessing('{0}/{1}.jpg'.format(img_path, lines[_].strip()),
                                                      '{0}/{1}.npy'.format(mat_path, lines[_].strip()))
 
-    return X, y
+    if adversarial:
+        if Source:
+            y_domain = np.concatenate([np.ones((batch_size, 1)), np.zeros((batch_size, 1))], axis=1)
+
+        else:
+            y_domain = np.concatenate([np.zeros((batch_size, 1)), np.ones((batch_size, 1))], axis=1)
+
+        return X, y, y_domain
+
+    else:
+
+        return X, y
 
 
 rotate_scope = [-i for i in range(1, 10)] + [i for i in range(10)]
@@ -62,7 +71,8 @@ def preprocessing(img_path, mat_path):
     joints = np.load(mat_path)
     angle = choice(rotate_scope)
     rotated_img, rotated_joints = rotate_image(img, joints, angle)
-    resized_img, resized_joints = resize_image_joints(rotated_img, rotated_joints)
+    croped_img, croped_joints = crop_image(rotated_img, rotated_joints)
+    resized_img, resized_joints = resize_image_joints(croped_img, croped_joints)
     norm_img = resized_img / 255
     heat_maps = make_heat_maps(resized_joints)
 
@@ -123,11 +133,11 @@ def crop_image(img, joints):
     y_min = np.int(mid_y - dist / 2)
     y_max = np.int(mid_y + dist / 2)
     if x_min < 0:
-        x_max += x_min
+        x_max -= x_min
         x_min = 0
 
-    if y_min <0:
-        y_max += y_min
+    if y_min < 0:
+        y_max -= y_min
         y_min = 0
 
     if x_max > img.shape[0]-1:
@@ -157,13 +167,13 @@ def resize_image_joints(img, joints, img_size=256, joints_size=64):
     :return: (np array) (np array)
     '''
 
-    rate = joints_size / img.shape[0]
-    x_mid = img.shape[0] / 2
-    y_mid = img.shape[1] / 2
+    rate = (joints_size-1) / max(img.shape[0], 1)
+    x_mid = img.shape[1] / 2
+    y_mid = img.shape[0] / 2
     img = imresize(img, [img_size, img_size], interp='bilinear')
     for _ in range(joints.shape[1]):
-        joints[0, _] = np.int((joints[0, _] - x_mid) * rate + joints_size / 2)
-        joints[1, _] = np.int((joints[1, _] - y_mid) * rate + joints_size / 2)
+        joints[0, _] = max(0, min(np.int((joints[0, _] - y_mid) * rate + joints_size / 2), joints_size-1))
+        joints[1, _] = max(0, min(np.int((joints[1, _] - x_mid) * rate + joints_size / 2), joints_size-1))
 
     return img, joints
 
@@ -204,7 +214,7 @@ def compute_loss(input, y):
             flat_y = flatten(y_heat_map)
             loss_list.append(tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=flat_input, labels=flat_y), name='loss'))
 
-    loss = tf.add_n(loss_list) / input.get_shape().as_list()[0]
+    loss = tf.add_n(loss_list) / (input.get_shape().as_list()[0] * input.get_shape().as_list()[4])
 
     return loss
 
@@ -223,7 +233,3 @@ def mat_to_joints(heat_maps):
         joints[:,_] = np.unravel_index(heat_maps[:, :, _].argmax(), heat_maps[:, :, _].shape)
 
     return joints
-
-
-
-

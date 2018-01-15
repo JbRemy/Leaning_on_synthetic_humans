@@ -47,7 +47,7 @@ def Create_data_set(set, rate):
                         if ind:
                             imsave('Data/{0}/images/{1}_{2}_{3}.jpg'.format(set, file, sub_file, _), img)
 
-                    for _ in zip(range(vid.get_length()), to_keep):
+                    for _, ind in zip(range(vid.get_length()), to_keep):
                         if ind:
                             data_list.write('{0}_{1}_{2}\n'.format(file, sub_file, _))
 
@@ -71,5 +71,5 @@ def Create_LSP():
     joints = mat['joints']
     for _ in range(2000):
         temp_joints = joints[0:2,0:13,_]
-        np.save('Data/LSP/matrix/{0}'.format(file_list[_]), temp_joints.astype(int))
-        data_list.write('{0}_{1}\n'.format(file_list[_], _))
+        #np.save('Data/LSP/matrix/{0}'.format(file_list[_]), temp_joints.astype(int))
+        data_list.write('{0}\n'.format(file_list[_]))
