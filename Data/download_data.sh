@@ -4,6 +4,8 @@ outdir=${1:-'/temp'}
 username=${2:-'username'}
 password=${3:-'password'}
 
+#This script is addapted from https://github.com/gulvarol/surreal/blob/master/download/download_surreal.sh
+
 # This script can be used to download all the data.
 # Partial download can be enabled by modifying the loops below.
 # Run `chmod u+x download_surreal.sh` and pass the path of the output directory as follows:
