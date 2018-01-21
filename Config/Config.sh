@@ -15,12 +15,14 @@ password=${2:-'password'}
 
 # Downloading data
 #Data/download_data.sh Data ${username} ${password}
-wget http://sam.johnson.io/research/lsp_dataset.zip
+#wget http://sam.johnson.io/research/lsp_dataset.zip
 
 # Creating directories
 for data_set in 'train' 'test' 'val'; do
     mkdir ./Data/${data_set}
-    for set in 'images' 'matrix'; do
+    for set in 'images' 'matrix' 'segm'; do
         mkdir ./Data/${data_set}/${set}
+        chmod a+w ./Data/${data_set}/${set}
+        chmod a+r ./Data/${data_set}/${set}
     done
 done

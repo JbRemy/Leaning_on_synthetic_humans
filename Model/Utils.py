@@ -9,11 +9,12 @@ from numpy.random import choice
 from scipy.misc import imread
 from scipy.ndimage.interpolation import rotate
 from scipy.misc import imresize
+from Model.lights_and_occlusions import Pre_Process_Images
 
 
 
 def make_batch(X_list, batch_size, input_H=256, input_W=256, output_dim=13, set='train',
-               adversarial=False, Source=True):
+               adversarial=False, Source=True, preproc=False):
     '''
     Creats a batch to be fed to the training algorithm
 
@@ -29,17 +30,21 @@ def make_batch(X_list, batch_size, input_H=256, input_W=256, output_dim=13, set=
     :return: (tensor) (tensor)
     '''
 
-    img_path = 'Data/{}/images'.format(set)
+    if preproc :
+        img_path = 'Data/{}/images_pre_processed'.format(set)
+    else:
+        img_path = 'Data/{}/images'.format(set)
+
     mat_path = 'Data/{}/matrix'.format(set)
     X = np.zeros([batch_size, input_H, input_W, 3])
     y = np.zeros([batch_size, int(input_H/4), int(input_W/4), output_dim])
 
     with open(X_list, 'r') as file:
-        lines = choice(file.readlines(), size=batch_size)
+        lines = choice(file.readlines(), size=batch_size, replace=False)
 
     for _ in range(len(lines)):
         X[_, :, :, :], y[_, :, :, :] = preprocessing('{0}/{1}.jpg'.format(img_path, lines[_].strip()),
-                                                     '{0}/{1}.npy'.format(mat_path, lines[_].strip()))
+                                                     '{0}/{1}.npy'.format(mat_path, lines[_].strip()), Source=Source)
 
     if adversarial:
         if Source:
@@ -56,7 +61,7 @@ def make_batch(X_list, batch_size, input_H=256, input_W=256, output_dim=13, set=
 
 
 rotate_scope = [-i for i in range(1, 10)] + [i for i in range(10)]
-def preprocessing(img_path, mat_path):
+def preprocessing(img_path, mat_path, Source=True):
     '''
     loads images, randomly rotates it, crops it so that the image is squared and focused on the body then resize it.
     Applies same transformaiton to the corresponding joints
@@ -70,8 +75,14 @@ def preprocessing(img_path, mat_path):
     img = imread(img_path)
     joints = np.load(mat_path)
     angle = choice(rotate_scope)
-    rotated_img, rotated_joints = rotate_image(img, joints, angle)
-    croped_img, croped_joints = crop_image(rotated_img, rotated_joints)
+    if Source:
+        rotated_img, rotated_joints = rotate_image(img, joints, angle)
+
+    else:
+        rotated_img = img
+        rotated_joints = joints
+
+    croped_img, croped_joints = crop_image(rotated_img, rotated_joints, Source=Source)
     resized_img, resized_joints = resize_image_joints(croped_img, croped_joints)
     norm_img = resized_img / 255
     heat_maps = make_heat_maps(resized_joints)
@@ -113,7 +124,7 @@ def rotate_image(img, joints, angle):
     return out_img, out_joints
 
 
-def crop_image(img, joints):
+def crop_image(img, joints, Source=True):
     '''
     Crop the image and adjust joinnts position, so that the image becomes square and focused on the body.
 
@@ -123,34 +134,53 @@ def crop_image(img, joints):
     :return: (np array) (np array)
     '''
 
-    x_dist = joints[1, :].max() - joints[1, :].min()
-    y_dist = joints[0, :].max() - joints[0, :].min()
-    dist = max(x_dist, y_dist) + 30
-    mid_x = (joints[1, :].max() + joints[1, :].min()) / 2
-    mid_y = (joints[0, :].max() + joints[0, :].min()) / 2
-    x_min = np.int(mid_x - dist / 2)
-    x_max = np.int(mid_x + dist / 2)
-    y_min = np.int(mid_y - dist / 2)
-    y_max = np.int(mid_y + dist / 2)
-    if x_min < 0:
-        x_max -= x_min
-        x_min = 0
+    if Source:
+        x_dist = joints[1, :].max() - joints[1, :].min()
+        y_dist = joints[0, :].max() - joints[0, :].min()
+        dist = max(x_dist, y_dist) + 30
+        mid_x = (joints[1, :].max() + joints[1, :].min()) / 2
+        mid_y = (joints[0, :].max() + joints[0, :].min()) / 2
+        x_min = np.int(mid_x - dist / 2)
+        x_max = np.int(mid_x + dist / 2)
+        y_min = np.int(mid_y - dist / 2)
+        y_max = np.int(mid_y + dist / 2)
+        if x_min < 0:
+            x_max -= x_min
+            x_min = 0
 
-    if y_min < 0:
-        y_max -= y_min
-        y_min = 0
+        if y_min < 0:
+            y_max -= y_min
+            y_min = 0
 
-    if x_max > img.shape[0]-1:
-        x_min -= x_max-img.shape[0]+1
-        x_max = img.shape[0]-1
+        if x_max > img.shape[0]-1:
+            x_min -= x_max-img.shape[0]+1
+            x_max = img.shape[0]-1
 
-    if y_max > img.shape[1]-1:
-        y_min -= y_max-img.shape[1]+1
-        y_max = img.shape[1]-1
+        if y_max > img.shape[1]-1:
+            y_min -= y_max-img.shape[1]+1
+            y_max = img.shape[1]-1
 
-    img = img[x_min:x_max, y_min:y_max, :]
-    joints[0, :] = joints[0, :] - y_min
-    joints[1, :] = joints[1, :] - x_min
+        img = img[x_min:x_max, y_min:y_max, :]
+        joints[0, :] = joints[0, :] - y_min
+        joints[1, :] = joints[1, :] - x_min
+
+    else:
+        if img.shape[0] == img.shape[1]:
+            0
+
+        elif img.shape[0] > img.shape[1]:
+            img_out = np.zeros((img.shape[0], img.shape[0], 3))
+            for _ in range(3):
+                img_out[0:img.shape[0], 0:img.shape[1] ,_] = img[:, :, _]
+                #joints[1,:] += img.shape[0]-img.shape[1]
+
+        else:
+            for _ in range(3):
+                img_out = np.zeros((img.shape[1], img.shape[1], 3))
+                img_out[0:img.shape[0], 0:img.shape[1],_] = img[:, :, _]
+                #joints[0,:] += img.shape[1]-img.shape[0]
+
+        img = img_out
 
     return img, joints
 

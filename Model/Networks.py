@@ -30,8 +30,8 @@ class Stacked_Hourglass():
         self.n_feats = n_feats
 
 
-    def fit(self, X_list, n_epochs, input_H=256, input_W=256, batch_size=6, output_dim=13, learning_rate=10e-3,
-            print_every_batch=100, save_every_batch=100, persistent_save=False, save_path=""):
+    def fit(self, X_list, n_epochs, input_H=256, input_W=256, batch_size=6, output_dim=13, learning_rate=10e-4,
+            print_every_batch=100, save_every_batch=100, persistent_save=False, save_path="", preproc=False):
         '''
         trains the network
 
@@ -75,7 +75,11 @@ class Stacked_Hourglass():
                 summary_train = tf.summary.FileWriter('{}/logs/train/'.format(save_path), tf.get_default_graph())
 
             with tf.name_scope('Optimizer'):
-                optimizer = tf.train.RMSPropOptimizer(learning_rate)
+                global_step = tf.Variable(0, trainable=False)
+                starter_learning_rate = learning_rate
+                learning_rate_decay = tf.train.exponential_decay(starter_learning_rate, global_step,
+                                                           2000, 0.5, staircase=True, name='Learning_Rate')
+                optimizer = tf.train.RMSPropOptimizer(learning_rate_decay)
                 minimizer = optimizer.minimize(loss)
 
             print('|-- done ({})'.format(time.strftime("%H:%M:%S", time.gmtime(time.time()-start_time))))
@@ -85,11 +89,10 @@ class Stacked_Hourglass():
             with tf.Session(config=tf.ConfigProto(allow_soft_placement=True, log_device_placement=True)) as sess:
                 sess.run(init)
                 avg_cost = 0
-                failed_count = 0
                 for epoch in range(n_epochs):
                     for batch_number in range(int(length/batch_size)):
                         try :
-                            X_batch, y_batch = make_batch(X_list, batch_size)
+                            X_batch, y_batch = make_batch(X_list, batch_size, preproc=preproc)
                             _, c, summary = sess.run([minimizer, loss, merged_summary], feed_dict={X: X_batch, y: y_batch})
                             avg_cost = avg_cost*(batch_number + epoch*int(length/batch_size)) / (batch_number + 1 + epoch*int(length/batch_size)) + c / (batch_number + 1 + epoch*int(length/batch_size))
                             if batch_number % save_every_batch == 0:
@@ -102,7 +105,7 @@ class Stacked_Hourglass():
                                 print('| |-- avg_cost = {}'.format(avg_cost))
 
                         except:
-                            failed_count += 1
+                            print('exeption')
 
                 print('- Training done ({})'.format(time.strftime("%H:%M:%S", time.gmtime(time.time()-start_time))))
                 print('|-- Learning curve saved to Data/logs/train/')
@@ -111,11 +114,13 @@ class Stacked_Hourglass():
                     saver.save(sess, '{}/model.ckpt'.format(save_path))
                     print('- Model saved to {}'.format(save_path))
 
+                sess.close()
+
             summary_train.close()
-            sess.close()
 
 
-    def adversarial_fit(self, Source_list, Target_list, n_epochs, input_H=256, input_W=256, batch_size=6, output_dim=13, learning_rate=10e-3,
+
+    def adversarial_fit(self, Source_list, Target_list, n_epochs, input_H=256, input_W=256, batch_size=6, output_dim=13, learning_rate=10e-4,
             print_every_batch=100, save_every_batch=100, persistent_save=False, save_path=""):
         '''
         trains the network with domain adversarial learning
@@ -134,6 +139,8 @@ class Stacked_Hourglass():
         :param save_path: (string) where to save the model
         '''
 
+        start_time = time.time()
+
         with open(Source_list, 'r') as file:
             lines = file.readlines()
             length = len(lines)
@@ -143,7 +150,6 @@ class Stacked_Hourglass():
         self.input_W = input_W
         self.output_dim = output_dim
 
-        start_time = time.time()
         with tf.device('/GPU:0'):
             print('- Initializing network')
             with tf.name_scope('inputs'):
@@ -154,30 +160,33 @@ class Stacked_Hourglass():
             network, domain_out = self._build_network(X, output_dim=output_dim, adversarial=True)
 
             with tf.name_scope('Loss'):
-
                 loss = compute_loss(network, y)
-
+                tf.summary.scalar('loss', loss, collections=['train'])
                 loss_domain = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=domain_out, labels=y_domain), name='loss_domain')
                 tf.summary.scalar('loss_domain', loss_domain, collections=['train'])
+                joint_loss = tf.add_n([loss, loss_domain])
+                tf.summary.scalar('joint_loss', joint_loss, collections=['train'])
                 merged_summary = tf.summary.merge_all('train')
 
             if persistent_save:
                 summary_train = tf.summary.FileWriter('{}/logs/train/'.format(save_path), tf.get_default_graph())
 
             with tf.name_scope('Optimizer'):
-                optimizer_Source = tf.train.RMSPropOptimizer(learning_rate)
-                minimizer_Source = optimizer_Source.minimize(tf.add_n([loss + loss_domain]))
+                global_step = tf.Variable(0, trainable=False)
+                starter_learning_rate = learning_rate
+                learning_rate_decay = tf.train.exponential_decay(starter_learning_rate, global_step,
+                                                                 3000, 0.9, staircase=True, name='Learning_Rate')
+                optimizer_Source = tf.train.RMSPropOptimizer(learning_rate_decay)
+                minimizer_Source = optimizer_Source.minimize(joint_loss)
 
-                optimizer_Target = tf.train.RMSPropOptimizer(learning_rate)
+                optimizer_Target = tf.train.RMSPropOptimizer(learning_rate_decay)
                 minimizer_Target = optimizer_Target.minimize(loss_domain)
-
 
 
             print('|-- done ({})'.format(time.strftime("%H:%M:%S", time.gmtime(time.time()-start_time))))
             print('- Starting training')
 
             minimizer_list = [minimizer_Source, minimizer_Target]
-            batch_type_list = ['Source', 'Target']
             X_list = [Source_list, Target_list]
             set_list = ['train', 'LSP']
 
@@ -187,23 +196,27 @@ class Stacked_Hourglass():
                 sess.run(init)
                 for epoch in range(n_epochs):
                     for batch_number in range(int(length/batch_size)):
-                        batch_type = choice([0, 1], p = [0.75, 0.25])
-                        try :
-                            X_batch, y_batch, y_domain_batch = make_batch(X_list[batch_type], batch_size, set=set_list[batch_type], adversarial=True, Source=bool(batch_type==0))
-                            _, summary = sess.run([minimizer_list[batch_type], merged_summary], feed_dict={X: X_batch, y: y_batch, y_domain: y_domain_batch})
-                            if batch_number % save_every_batch == 0:
-                                summary_train.add_summary(summary, batch_number + epoch * int(length/batch_size))
-                                summary_train.flush()
+                        batch_type = choice([0, 1], p = [0.7, 0.3])
+                        passed = 0
+                        while passed == 0:
+                            try :
+                                X_batch, y_batch, y_domain_batch = make_batch(X_list[batch_type], batch_size, set=set_list[batch_type], adversarial=True, Source=bool(batch_type==0))
+                                passed = 1
 
-                            if batch_number % print_every_batch == 0:
-                                print('|-- Epoch {0} Batch {1} done ({2}) :'.format(epoch, batch_number, time.strftime("%H:%M:%S", time.gmtime(
-                                    time.time() - start_time))))
+                            except:
+                                print('exception')
 
-                        except:
-                            0
+                        _, summary = sess.run([minimizer_list[batch_type], merged_summary], feed_dict={X: X_batch, y: y_batch, y_domain: y_domain_batch})
+                        if batch_number % save_every_batch == 0:
+                            summary_train.add_summary(summary, batch_number + epoch * int(length/batch_size))
+                            summary_train.flush()
+
+                        if batch_number % print_every_batch == 0:
+                            print('|-- Epoch {0} Batch {1} done ({2}) :'.format(epoch, batch_number, time.strftime("%H:%M:%S", time.gmtime(
+                            time.time() - start_time))))
 
                 print('- Training done ({})'.format(time.strftime("%H:%M:%S", time.gmtime(time.time()-start_time))))
-                print('|-- Learning curve saved to Data/logs/train/')
+                print('|-- Learning curve saved to {}/logs/train/'.format(save_path))
                 saver.save(sess, '/tmp/model.ckpt')
                 if persistent_save:
                     saver.save(sess, '{}/model.ckpt'.format(save_path))
@@ -213,7 +226,7 @@ class Stacked_Hourglass():
             sess.close()
 
 
-    def predicit(self, X_list, batch_size, set='test', path= 'tmp/model/ckpt'):
+    def predict(self, X_list, batch_size, set='LSP', path= 'tmp/model/ckpt', adversarial=False, Source=False):
         '''
         Computes output of a pre-trained model over a test batch
 
@@ -227,7 +240,12 @@ class Stacked_Hourglass():
         '''
 
         with tf.device('/GPU:0'):
-            X_batch, y_batch = make_batch(X_list, batch_size, set=set)
+            if adversarial :
+                X_batch, y_batch, y_domain = make_batch(X_list, batch_size, set=set, Source=Source, adversarial=adversarial)
+
+            else:
+                X_batch, y_batch = make_batch(X_list, batch_size, set=set, Source=Source, adversarial=adversarial)
+
             with tf.Session(config=tf.ConfigProto(allow_soft_placement=True, log_device_placement=True)) as sess:
                 saver = tf.train.import_meta_graph(path+'/model.ckpt.meta')
                 saver.restore(sess, tf.train.latest_checkpoint(path))
@@ -235,22 +253,93 @@ class Stacked_Hourglass():
                 X = graph.get_tensor_by_name("inputs/X_train:0")
                 y = graph.get_tensor_by_name("inputs/y_train:0")
                 network = graph.get_tensor_by_name('Network/Output:0')
-                loss = compute_loss(network, y)
-                tf.summary.scalar('loss', loss, collections=['train'])
-                merged_summary = tf.summary.merge_all('train')
-                heat_maps, c = sess.run([network, merged_summary], feed_dict={X: X_batch, y: y_batch})
+                heat_maps = sess.run(network, feed_dict={X: X_batch, y: y_batch})
+
+            out_heat_maps = np.zeros([self.batch_size, 64, 64, 13])
+            for _ in range(self.n_stacks):
+                out_heat_maps = np.add(out_heat_maps, heat_maps[_, :, :, :, :])
 
             joints = np.zeros([batch_size, 2, self.output_dim])
             for _ in range(batch_size):
-                joints[_, :, :] = mat_to_joints(heat_maps[self.n_stacks-1, _, :, :, :])
+                joints[_, :, :] = mat_to_joints(out_heat_maps[_, :, :, :])
 
             true_joints = np.zeros([batch_size, 2, self.output_dim])
             for _ in range(y_batch.shape[0]):
                 true_joints[_, :, :] = mat_to_joints(y_batch[_, :, :, :])
             sess.close()
 
-            return X_batch, joints, true_joints, c
+            return X_batch, joints, true_joints
 
+    def eval(self, X_list, set='LSP', path= 'tmp/model/ckpt', Source=True):
+        '''
+        Compute RMSE and Elbows PDJ loss on the testing data set
+        :param X_list:
+        :param set:
+        :param path:
+        :param Source:
+        :return:
+        '''
+        start_time = time.time()
+        with tf.device('/GPU:0'):
+            with open(X_list, 'r') as file:
+                lines = file.readlines()
+
+            length = len(lines)
+            with tf.Session(config=tf.ConfigProto(allow_soft_placement=True, log_device_placement=True)) as sess:
+                saver = tf.train.import_meta_graph(path+'/model.ckpt.meta')
+                saver.restore(sess, tf.train.latest_checkpoint(path))
+                graph = tf.get_default_graph()
+                X = graph.get_tensor_by_name("inputs/X_train:0")
+                y = graph.get_tensor_by_name("inputs/y_train:0")
+                network = graph.get_tensor_by_name('Network/Output:0')
+                RMSE = 0
+                num_except = 0
+                print(int(length / self.batch_size))
+                PDJ = [0, 0, 0]
+                PDJ_ratio = [0.05, 0.2, 0.4]
+                for batch_number in range(int(3 * length / self.batch_size)):
+                    if batch_number % 100 == 0:
+                        print('|-- Batch {0} done ({1}) :'.format(batch_number, time.strftime("%H:%M:%S", time.gmtime(
+                                                                            time.time() - start_time))))
+                    try :
+                        X_batch, y_batch = make_batch(X_list, self.batch_size, set=set, Source=Source)
+                        heat_maps = sess.run(network, feed_dict={X: X_batch, y: y_batch})
+
+                        out_heat_maps = np.zeros([self.batch_size, 64, 64, 13])
+                        for _ in range(self.n_stacks):
+                            out_heat_maps = np.add(out_heat_maps, heat_maps[_, :, :, :, :])
+
+                        joints = np.zeros([self.batch_size, 2, self.output_dim])
+                        for _ in range(self.batch_size):
+                            joints[_, :, :] = mat_to_joints(out_heat_maps[_, :, :, :])
+
+                        true_joints = np.zeros([self.batch_size, 2, self.output_dim])
+                        for _ in range(y_batch.shape[0]):
+                            true_joints[_, :, :] = mat_to_joints(y_batch[_, :, :, :])
+
+                        for _ in range(self.batch_size):
+                            torso_width = ((true_joints[_, :, 8] - true_joints[_, :, 9])**2).sum()
+                            for _1 in [7, 10]:
+                                for _2 in range(3):
+                                    if ((joints[_, :, _1] - true_joints[_, :, _1])**2).sum() < torso_width*PDJ_ratio[_2]**2:
+                                        PDJ[_2] = PDJ[_2] + 1
+
+                        for _ in range(self.batch_size):
+                            SE = ((joints[_, :, :]  - true_joints[_, :, :] )**2).sum()
+                            RMSE += SE
+
+                    except:
+                        print('exeption')
+                        num_except +=1
+
+
+                sess.close()
+
+            RMSE = RMSE/((3 * int(length / self.batch_size)-num_except) * self.output_dim * 2)
+            RMSE = np.sqrt(RMSE)
+            PDJ = [_/((3 * int(length / self.batch_size)-num_except) * 2) for _ in PDJ]
+
+            return RMSE, PDJ
 
     def _build_network(self, input, output_dim=13, adversarial=False):
         '''
@@ -281,7 +370,7 @@ class Stacked_Hourglass():
             out = tf.stack(heat_maps, name='Output')
 
             if adversarial:
-                domain_out = domain_classification_output(stacks_out, self.batch_size)
+                domain_out = domain_classification_output(tf.add_n(heat_maps), self.batch_size)
 
                 return out, domain_out
 

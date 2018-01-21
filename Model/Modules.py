@@ -191,21 +191,21 @@ def domain_classification_output(input, batch_size, n_feats=256, name='Domain_Cl
     :return: (tensor) classification log-probs
     '''
 
-    variables = {
-        'w1' : tf.Variable(tf.truncated_normal([1024, 256], stddev=0.1)),
-        'b1': tf.Variable(tf.zeros([1, 256])),
-
-        'w2': tf.Variable(tf.truncated_normal([256, 64], stddev=0.1)),
-        'b2': tf.Variable(tf.zeros([1, 64])),
-
-        'w3': tf.Variable(tf.truncated_normal([64, 16], stddev=0.1)),
-        'b3': tf.Variable(tf.zeros([1, 16])),
-
-        'w4': tf.Variable(tf.truncated_normal([16, 2], stddev=0.1)),
-        'b4': tf.Variable(tf.zeros([1, 2]))
-    }
-
     with tf.name_scope(name):
+        variables = {
+            'w1': tf.Variable(tf.truncated_normal([1024, 256], stddev=0.1)),
+            'b1': tf.Variable(tf.zeros([1, 256])),
+
+            'w2': tf.Variable(tf.truncated_normal([256, 64], stddev=0.1)),
+            'b2': tf.Variable(tf.zeros([1, 64])),
+
+            'w3': tf.Variable(tf.truncated_normal([64, 16], stddev=0.1)),
+            'b3': tf.Variable(tf.zeros([1, 16])),
+
+            'w4': tf.Variable(tf.truncated_normal([16, 2], stddev=0.1)),
+            'b4': tf.Variable(tf.zeros([1, 2]))
+        }
+
         with tf.name_scope('Gradient_Reversal'):
             temp = tf.negative(input, name='Temp')
             stop = tf.stop_gradient(tf.subtract(input, temp))
@@ -224,13 +224,13 @@ def domain_classification_output(input, batch_size, n_feats=256, name='Domain_Cl
         for _ in range(batch_size):
             flat_layer = tf.reshape(flat[_, :], [1, 1024])
             layer_fccd = tf.add_n([tf.matmul(flat_layer, variables['w1']), variables['b1']])
-            layer_actv = tf.nn.sigmoid(layer_fccd)
+            layer_actv = tf.nn.relu(layer_fccd)
             layer1_fccd = tf.add_n([tf.matmul(layer_actv, variables['w2']), variables['b2']])
-            layer1_actv = tf.nn.sigmoid(layer1_fccd)
+            layer1_actv = tf.nn.relu(layer1_fccd)
             layer2_fccd = tf.add_n([tf.matmul(layer1_actv, variables['w3']), variables['b3']])
-            layer2_actv = tf.nn.sigmoid(layer2_fccd)
+            layer2_actv = tf.nn.relu(layer2_fccd)
             layer3_fccd = tf.add_n([tf.matmul(layer2_actv, variables['w4']), variables['b4']])
-            logs.append(tf.nn.sigmoid(layer3_fccd))
+            logs.append(tf.nn.relu(layer3_fccd))
 
         logits = tf.stack(logs)
 

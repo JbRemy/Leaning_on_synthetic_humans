@@ -1,20 +1,7 @@
 import numpy as np
 import pandas as pd
-import random as rdm
-import scipy.io
 from PIL import Image
-
-
-path = '/Users/marcetheve/Documents/MVA/Computer vision/Project/data/'
-path_images = '/Users/marcetheve/Documents/MVA/Computer vision/Project/data/images/'
-
-segm_dict = scipy.io.loadmat(path + '107_02_c0003_segm.mat')
-names_segm = ['segm_' + a for a in map(str, np.arange(1,73))]
-names_images = ['img_' + a + '.jpg' for a in map(str, np.arange(0,72))]
-
-proba_crop = 0.1
-prop_min = 0.1
-prop_max = 0.5
+import random as rdm
 
 def Avg_Brightness(rgb_target, ix):
     rgb_target = pd.DataFrame(rgb_target[ix])
@@ -32,7 +19,7 @@ def Center_Brightness(rgb_img, ix, target_brightness):
         rgb_img[i,j,] = tmp
     return None
 
-def Pre_Process_Images(segm, img, proba_crop, prop_min, prop_max, path_segm):
+def Pre_Process_Images(img, segm, proba_crop=0.8, prop_min=0.2, prop_max=0.5):
 #for i in tqdm(range(len(names_segm))):
     #img = Image.open(path_images + names_images[i])
     #segm = segm_dict[names_segm[i]]
@@ -46,12 +33,13 @@ def Pre_Process_Images(segm, img, proba_crop, prop_min, prop_max, path_segm):
 
 
     #### Crop the human with proba_crop
-    if np.random.binomial(1,proba_crop) == 1:
+    if True :
+    #if (np.random.binomial(1,proba_crop) == 1) & (np.array(ix_hum).shape[1]>0):
 
         # Get points of reference #####################
         # x and y axis are inversed in the arrays and in directions
-        frame_lim_y = len(segm)
-        frame_lim_x = len(segm[0])
+        frame_lim_y = len(segm)-1
+        frame_lim_x = len(segm[0])-1
         ix_hum = np.where(segm != 0)
         x_hum = ix_hum[1]
         y_hum = ix_hum[0]
@@ -64,8 +52,6 @@ def Pre_Process_Images(segm, img, proba_crop, prop_min, prop_max, path_segm):
 
         # Get cropping surface #####################
         # Proportion of cropping
-        prop_min = 0.1
-        prop_max = 0.5
         prop_range = prop_max - prop_min
         prop_x = rdm.random() * prop_range + (prop_max - prop_range)
         prop_y = rdm.random() * prop_range + (prop_max - prop_range)
@@ -100,11 +86,19 @@ def Pre_Process_Images(segm, img, proba_crop, prop_min, prop_max, path_segm):
 
         # Select a region in the available background #####################
         ix_surf = rdm.randint(0,3)
-        while min(surf[ix_surf][0].shape) == 0:
+        count = 0
+        while min(surf[ix_surf][0].shape) == 0 & count < 10:
             ix_surf = rdm.randint(0,3)
+            count += 1
 
-        x_ref_bg = rdm.sample(surf[ix_surf][1], 1)[0][0]
-        y_ref_bg = rdm.sample(surf[ix_surf][0][0], 1)[0]
+        if count == 10:
+            print('Rejected')
+            return rgb_img
+
+        x_x_ref_bg = np.random.choice(range(surf[ix_surf][1].shape[0]))
+        y_x_ref_bg = np.random.choice(range(surf[ix_surf][0].shape[1]))
+        x_ref_bg = surf[ix_surf][1][x_x_ref_bg, 0]
+        y_ref_bg = surf[ix_surf][0][0, y_x_ref_bg]
         surf_bg = np.meshgrid(np.arange(y_ref_bg, y_ref_bg + len_y_crop), np.arange(x_ref_bg, x_ref_bg + len_x_crop))
 
         # Paste the background on the cropping area #####################
@@ -119,11 +113,14 @@ def Pre_Process_Images(segm, img, proba_crop, prop_min, prop_max, path_segm):
         #segm[surf_crop] = 0
         #segm_dict[names_segm[i]] = segm
         # Save the resulting image #####################
-        img = Image.fromarray(rgb_img, 'RGB')
+        #img = Image.fromarray(rgb_img, 'RGB')
         #img.save(path_images+'abc_'+str(i)+'.jpg')
 #### Save the segmentation dictionary updated
 #scipy.io.savemat(path_segm + 'test_segm', segm_dict)
-    return img
+    else:
+        print('No Humans')
+
+    return rgb_img
 
 #img = Image.open(path_images+"abc_10.jpg")
 #segm_mat = scipy.io.loadmat(path + 'test_segm.mat')
